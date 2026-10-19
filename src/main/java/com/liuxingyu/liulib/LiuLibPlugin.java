@@ -15,6 +15,7 @@ import com.liuxingyu.liulib.scheduler.LiuLibScheduler;
 import com.liuxingyu.liulib.service.ServiceRegistry;
 import com.liuxingyu.liulib.storage.MySql;
 import com.liuxingyu.liulib.storage.RedisClient;
+import com.liuxingyu.liulib.storage.Sqlite;
 import com.liuxingyu.liulib.text.TextService;
 import com.liuxingyu.liulib.ui.SparrowUi;
 import org.bukkit.Material;
@@ -54,6 +55,7 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     private volatile Configs configs;
     private volatile PlaytimeService playtime;
     private volatile MySql mysql;
+    private volatile Sqlite sqlite;
     private volatile RedisClient redis;
     private volatile CrossServer crossServer;
     private volatile SparrowUi sparrow;
@@ -75,6 +77,8 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
         this.economy = new EconomyService(this);
         this.mysql = new MySql(config.mysql(), getLogger());
         this.mysql.init();
+        this.sqlite = new Sqlite(this, config.sqlite(), getLogger());
+        this.sqlite.init();
         this.redis = new RedisClient(config.redis(), getLogger());
         this.redis.init();
         this.crossServer = new CrossServer(redis);
@@ -95,6 +99,7 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
 
         getLogger().info("LiuLib 已启用：CE=" + (items.isCraftEngineAvailable() ? "可用" : "未安装")
                 + " MySQL=" + (mysql.isReady() ? "已连接" : "未启用")
+                + " SQLite=" + (sqlite.isReady() ? "已连接" : "未启用")
                 + " Redis=" + (redis.isReady() ? "已连接" : "未启用")
                 + " Sparrow=" + (sparrow.available() ? "可用" : "未启用")
                 + " Playtime=" + (playtime.isEnabled() ? playtime.storageKind() : "未启用")
@@ -125,6 +130,9 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
         }
         if (redis != null) {
             redis.close();
+        }
+        if (sqlite != null) {
+            sqlite.close();
         }
         if (mysql != null) {
             mysql.close();
@@ -204,6 +212,11 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     }
 
     @Override
+    public Sqlite sqlite() {
+        return sqlite;
+    }
+
+    @Override
     public RedisClient redis() {
         return redis;
     }
@@ -248,6 +261,8 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
             TextService newText = new TextService(fresh.text());
             MySql newMysql = new MySql(fresh.mysql(), getLogger());
             boolean mysqlOk = newMysql.init();
+            Sqlite newSqlite = new Sqlite(this, fresh.sqlite(), getLogger());
+            boolean sqliteOk = newSqlite.init();
             RedisClient newRedis = new RedisClient(fresh.redis(), getLogger());
             boolean redisOk = newRedis.init();
             CrossServer newCrossServer = new CrossServer(newRedis);
@@ -257,6 +272,7 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
             EconomyService newEconomy = new EconomyService(this);
 
             MySql oldMysql = mysql;
+            Sqlite oldSqlite = sqlite;
             RedisClient oldRedis = redis;
             CrossServer oldCrossServer = crossServer;
             SparrowUi oldSparrow = sparrow;
@@ -274,6 +290,7 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
             this.configs = newConfigs;
             this.text = newText;
             this.mysql = newMysql;
+            this.sqlite = newSqlite;
             this.redis = newRedis;
             this.crossServer = newCrossServer;
             this.sparrow = newSparrow;
@@ -289,12 +306,18 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
             if (oldRedis != null) {
                 oldRedis.close();
             }
+            if (oldSqlite != null) {
+                oldSqlite.close();
+            }
             if (oldMysql != null) {
                 oldMysql.close();
             }
 
             boolean ok = true;
             if (fresh.mysql().enabled() && !mysqlOk) {
+                ok = false;
+            }
+            if (fresh.sqlite().enabled() && !sqliteOk) {
                 ok = false;
             }
             if (fresh.redis().enabled() && !redisOk) {
@@ -425,6 +448,8 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
         out.add("Services: " + services.size() + " 个自注册服务");
         out.add("CrossServer: " + (crossServer.available() ? "OK" : "Redis 未启用"));
         out.add("Economy: " + (economy.available() ? "Vault 已连接" : "未启用"));
+        out.add("SQLite: " + (sqlite.isReady()
+                ? "OK (" + sqlite.file().getFileName() + ")" : "未启用"));
         return out;
     }
 
@@ -451,7 +476,8 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
         out.append("PlaceholderAPI: ").append(placeholders.available() ? "可用" : "未安装").append('\n');
         out.append("物品操作/冷却/服务: 就绪 (服务=" + services.size() + ")").append('\n');
         out.append("跨服消息: ").append(crossServer.available() ? "可用" : "未启用").append('\n');
-        out.append("经济: ").append(economy.available() ? "Vault 可用" : "未启用");
+        out.append("经济: ").append(economy.available() ? "Vault 可用" : "未启用").append('\n');
+        out.append("SQLite: ").append(sqlite.isReady() ? "可用" : "未启用");
         return out.toString();
     }
 }

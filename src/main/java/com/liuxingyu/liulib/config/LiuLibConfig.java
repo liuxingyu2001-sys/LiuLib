@@ -3,6 +3,7 @@ package com.liuxingyu.liulib.config;
 import com.liuxingyu.liulib.playtime.PlaytimeSettings;
 import com.liuxingyu.liulib.storage.RedisConfig;
 import com.liuxingyu.liulib.storage.SqlConfig;
+import com.liuxingyu.liulib.storage.SqliteConfig;
 import org.bukkit.configuration.file.FileConfiguration;
 
 /**
@@ -12,6 +13,7 @@ public record LiuLibConfig(
         boolean debug,
         String language,
         Item item,
+        SqliteConfig sqlite,
         SqlConfig mysql,
         RedisConfig redis,
         Ui ui,
@@ -40,12 +42,19 @@ public record LiuLibConfig(
                 yaml.getBoolean("debug", false),
                 yaml.getString("language", "zh_CN"),
                 item,
+                SqliteConfig.from(yaml.getConfigurationSection("sqlite")),
                 SqlConfig.from(yaml.getConfigurationSection("mysql")),
                 RedisConfig.from(yaml.getConfigurationSection("redis")),
                 ui,
                 text,
                 PlaytimeSettings.from(yaml.getConfigurationSection("playtime"))
         );
+    }
+
+    /** 兼容旧构造：SQLite 默认关闭。 */
+    public LiuLibConfig(boolean debug, String language, Item item, SqlConfig mysql,
+                        RedisConfig redis, Ui ui, Text text, PlaytimeSettings playtime) {
+        this(debug, language, item, SqliteConfig.disabled(), mysql, redis, ui, text, playtime);
     }
 
     public record Item(

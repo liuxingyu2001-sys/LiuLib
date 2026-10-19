@@ -13,6 +13,7 @@ import com.liuxingyu.liulib.scheduler.LiuLibScheduler;
 import com.liuxingyu.liulib.service.ServiceRegistry;
 import com.liuxingyu.liulib.storage.MySql;
 import com.liuxingyu.liulib.storage.RedisClient;
+import com.liuxingyu.liulib.storage.Sqlite;
 import com.liuxingyu.liulib.text.TextService;
 import com.liuxingyu.liulib.ui.SparrowUi;
 
@@ -62,6 +63,9 @@ public interface LiuLibApi {
 
     /** MySQL 封装；未启用时 isReady()=false。 */
     MySql mysql();
+
+    /** SQLite 封装；未启用时 isReady()=false。 */
+    Sqlite sqlite();
 
     /** Redis 封装；未启用时 isReady()=false。 */
     RedisClient redis();

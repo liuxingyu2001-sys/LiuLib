@@ -144,6 +144,20 @@ public final class MySql implements AutoCloseable {
         return pool != null && !pool.isClosed() && !closed.get();
     }
 
+    /**
+     * 从连接池借一个连接，调用方必须在 finally 中关闭。
+     *
+     * <p>用于必须持有同一会话的场景（如 {@link MySqlLock} 的命名锁）；
+     * 普通查询请优先使用 {@link #query}/{@link #update}/{@link #transaction}。</p>
+     */
+    public Connection getConnection() throws SQLException {
+        HikariDataSource pool = dataSource;
+        if (pool == null || closed.get()) {
+            throw new SQLException("MySQL 未就绪");
+        }
+        return pool.getConnection();
+    }
+
     /** 真实探活；失败返回 false 并触发 Hikari 重建连接。 */
     public boolean healthCheck() {
         if (!isReady()) {

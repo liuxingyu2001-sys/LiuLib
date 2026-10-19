@@ -1,7 +1,7 @@
 # LiuLib
 
 liuxingyu / liuxingyu2001 系列插件的公共库，把各处反复复制的**物品解析、名称解析、物品序列化、
-物品操作、文本、调度、冷却、共享配置、在线时长、经济、跨服消息、MySQL/Redis、Sparrow UI**
+物品操作、文本、调度、冷却、共享配置、在线时长、经济、跨服消息、MySQL/SQLite/Redis、Sparrow UI**
 收敛成一套 API，作为一个独立插件加载，其它插件 `depend: [LiuLib]` 即可复用。
 
 - 目标服务端：Paper / Folia 1.21+
@@ -31,6 +31,8 @@ liuxingyu / liuxingyu2001 系列插件的公共库，把各处反复复制的**�
 | 插件间服务 | `ServiceRegistry` | Bukkit ServicesManager 的 Optional/批量封装 |
 | 跨服消息 | `CrossServer` | Redis pub/sub 上的结构化消息，自动过滤本服回声 |
 | 经济 | `EconomyService` | Vault 扣款/存款/余额的可选封装 |
+| SQLite（单文件库、异步写、事务） | `Sqlite` | 单服小数据量场景，免装数据库 |
+| MySQL 命名锁 | `MySqlLock` | 单库跨进程互斥（无 Redis 时） |
 | SQL 迁移 | `SqlMigrations` | 各插件手写 `CREATE TABLE` / ALTER 的版本管理 |
 
 > 只提取**跨插件公共且语义一致**的部分；商店价格、地牢队伍、公会数据模型等业务逻辑仍留在各自插件。
@@ -90,6 +92,7 @@ LiuLibScheduler scheduler = LiuLib.scheduler();
 Configs configs = LiuLib.configs();
 PlaytimeService playtime = LiuLib.playtime();
 MySql mysql = LiuLib.mysql();
+Sqlite sqlite = LiuLib.sqlite();
 RedisClient redis = LiuLib.redis();
 SparrowUi sparrow = LiuLib.sparrow();
 ```
@@ -530,6 +533,58 @@ int version = migrations.currentVersion();
 - 版本表默认 `liulib_schema`，每个版本独立事务，失败回滚且不记录版本；
 - 重复调用只执行缺失版本；表名只允许字母/数字/下划线，避免 SQL 注入；
 - 迁移应在异步线程执行一次，不要放在主线程。
+
+MySQL 命名锁（无 Redis 时的跨进程互斥）：
+
+```java
+Optional<MySqlLock> lock = MySqlLock.tryAcquire(mysql, "liulib:daily", 5);
+if (lock.isPresent()) {
+    try (MySqlLock held = lock.get()) {
+        // 临界区：同一时刻只有一个服/线程能进入
+    }
+}
+```
+
+- 锁与会话绑定，`MySqlLock` 持有专用连接，`close()` 时释放并归还；
+- 等待 `timeoutSeconds` 秒后仍拿不到返回空，不抛异常；
+- 锁名最多 64 字符；Redis 可用时优先用 `RedisClient.tryLock`。
+
+### 9.1 SQLite
+
+```yaml
+sqlite:
+  enabled: false
+  file: data.db          # 相对 plugins/LiuLib/
+  table-prefix: 'liulib_'
+```
+
+```java
+Sqlite sqlite = LiuLib.sqlite();
+if (sqlite.isReady()) {
+    sqlite.createTable("coins", "uuid TEXT PRIMARY KEY, amount INTEGER NOT NULL DEFAULT 0");
+    sqlite.update("INSERT INTO `liulib_coins` (uuid, amount) VALUES (?, ?) "
+            + "ON CONFLICT(uuid) DO UPDATE SET amount = amount + excluded.amount", uuid, 10);
+    int amount = sqlite.queryOne("SELECT amount FROM `liulib_coins` WHERE uuid = ?",
+            rs -> rs.getInt(1), uuid);
+
+    sqlite.transaction(connection -> {
+        try (var ps = connection.prepareStatement(
+                "UPDATE `liulib_coins` SET amount = amount - ? WHERE uuid = ?")) {
+            ps.setInt(1, 5);
+            ps.setString(2, uuid);
+            ps.executeUpdate();
+        }
+        return null;
+    });
+
+    sqlite.executeAsync(() -> sqlite.update("DELETE FROM `liulib_coins` WHERE uuid = ?", uuid));
+}
+```
+
+- 单文件、无需额外服务，适合单服小数据量；多服共享仍用 MySQL；
+- 每次操作打开连接，WAL + `busy_timeout=5000` 降低锁冲突；
+- 驱动 `org.xerial:sqlite-jdbc` 由 `plugin.yml: libraries` 交给 Paper 下载，不打包进 jar；
+- `executeAsync` 单线程串行写；未启用/初始化失败时 `isReady()=false`，调用方回退 YAML/内存。
 
 ---
 

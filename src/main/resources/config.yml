@@ -78,6 +78,13 @@ mysql:
   # 启动时执行 CREATE DATABASE IF NOT EXISTS（账号无权限时只警告）
   auto-create-database: true
 
+sqlite:
+  # 单文件数据库：适合单服小数据量；多服共享请用 MySQL
+  enabled: false
+  # 相对路径基于 plugins/LiuLib/，也可以写绝对路径
+  file: data.db
+  table-prefix: 'liulib_'
+
 redis:
   enabled: false
   host: 127.0.0.1

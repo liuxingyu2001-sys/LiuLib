@@ -13,6 +13,7 @@ import com.liuxingyu.liulib.scheduler.LiuLibScheduler;
 import com.liuxingyu.liulib.service.ServiceRegistry;
 import com.liuxingyu.liulib.storage.MySql;
 import com.liuxingyu.liulib.storage.RedisClient;
+import com.liuxingyu.liulib.storage.Sqlite;
 import com.liuxingyu.liulib.text.TextService;
 import com.liuxingyu.liulib.ui.SparrowUi;
 import org.bukkit.Bukkit;
@@ -119,6 +120,10 @@ public final class LiuLib {
 
     public static MySql mysql() {
         return api().mysql();
+    }
+
+    public static Sqlite sqlite() {
+        return api().sqlite();
     }
 
     public static RedisClient redis() {

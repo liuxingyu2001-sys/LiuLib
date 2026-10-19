@@ -3,7 +3,7 @@ version: '${project.version}'
 main: com.liuxingyu.liulib.LiuLibPlugin
 api-version: '1.21'
 authors: [liuxingyu, liuxingyu2001]
-description: liuxingyu 系列插件公共库 —— 物品解析 / 文本 / 调度 / 冷却 / 在线时长 / 经济 / 跨服 / MySQL / Redis / Sparrow UI
+description: liuxingyu 系列插件公共库 —— 物品解析 / 文本 / 调度 / 冷却 / 在线时长 / 经济 / 跨服 / MySQL / SQLite / Redis / Sparrow UI
 website: 'https://github.com/liuxingyu2001'
 folia-supported: true
 
@@ -17,6 +17,7 @@ softdepend:
 # 已随 LiuLib 打包并 relocate，服主不需要额外安装。
 libraries:
   - com.mysql:mysql-connector-j:8.0.33
+  - org.xerial:sqlite-jdbc:3.46.0.0
 
 commands:
   liulib:
