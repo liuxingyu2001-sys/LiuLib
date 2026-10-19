@@ -202,6 +202,13 @@ ItemStack fromYaml = codec.fromSection(configSection);
 - 旧 `BukkitObjectOutputStream` 数据（`0xAC 0xED` 开头）自动兼容读取；
 - 单件编码默认上限 60000 字符，可在 `config.yml: item.max-encoded-length` 调整。
 
+游戏内可用 `/liulib item [main|offhand]` 获取手持物品的 Base64：
+
+- 完整串同时输出到控制台；
+- 聊天栏提供 `[复制 Base64]` 和 `[复制 base64: 形式]` 两个可点击按钮；
+- `base64:` 形式可直接写入支持完整物品配置的字段（如 `items.xxx`）；
+- 需要权限 `liulib.item`（默认 OP）。
+
 ### 3.4 物品构建与库存操作
 
 ```java
@@ -696,6 +703,7 @@ if (sparrow.available()) {
 | `/liulib playtime` | 查看自己的总 / 今日 / 本次在线时长 | `liulib.playtime` |
 | `/liulib playtime <玩家>` | 查看其他玩家（离线玩家需有缓存） | `liulib.playtime.others` |
 | `/liulib playtime top [today\|week\|total] [数量]` | 在线时长排行榜 | `liulib.playtime.top` |
+| `/liulib item [main\|offhand]` | 获取手中物品的 Base64，控制台输出 + 聊天点击复制 | `liulib.item` 或 `liulib.admin` |
 | `/liulib playtime` 别名 | `/liulib pt` | 同上 |
 
 `liulib.playtime.afk-bypass`：拥有该权限的玩家挂机也计入在线时长。

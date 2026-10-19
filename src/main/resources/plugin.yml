@@ -21,8 +21,8 @@ libraries:
 
 commands:
   liulib:
-    description: LiuLib 状态、重载与在线时长
-    usage: /liulib <status|selftest|reload|playtime>
+    description: LiuLib 状态、重载、在线时长与物品序列化
+    usage: /liulib <status|selftest|reload|playtime|item>
     aliases: [ll]
 
 permissions:
@@ -38,6 +38,9 @@ permissions:
   liulib.playtime.top:
     description: 查看在线时长排行榜
     default: true
+  liulib.item:
+    description: 获取手中物品的序列化 Base64
+    default: op
   liulib.playtime.afk-bypass:
     description: 挂机也计入在线时长
     default: false
