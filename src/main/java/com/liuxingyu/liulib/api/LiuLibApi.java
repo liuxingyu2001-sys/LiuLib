@@ -17,6 +17,8 @@ import com.liuxingyu.liulib.storage.Sqlite;
 import com.liuxingyu.liulib.text.TextService;
 import com.liuxingyu.liulib.ui.SparrowUi;
 
+import java.io.File;
+
 /**
  * LiuLib 对其它插件暴露的稳定入口。
  *
@@ -76,12 +78,15 @@ public interface LiuLibApi {
     /** 当前配置快照。 */
     LiuLibConfig config();
 
+    /** 当前配置根目录：共享目录或插件数据目录。 */
+    File configRoot();
+
     /** 插件版本（plugin.yml 的 version）。 */
     String version();
 
     /** 是否开启调试日志。 */
     boolean debug();
 
-    /** 重新读取 config.yml 并重建连接；返回是否全部成功。 */
+    /** 重新读取本地入口与共享 config.yml，并重建连接；返回是否全部成功。 */
     boolean reload();
 }

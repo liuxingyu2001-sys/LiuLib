@@ -19,6 +19,8 @@ import com.liuxingyu.liulib.ui.SparrowUi;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
+import java.io.File;
+
 /**
  * 其它插件的静态入口。
  *
@@ -112,6 +114,10 @@ public final class LiuLib {
 
     public static Configs configs() {
         return api().configs();
+    }
+
+    public static File configRoot() {
+        return api().configRoot();
     }
 
     public static PlaytimeService playtime() {

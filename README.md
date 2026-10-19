@@ -93,6 +93,7 @@ Configs configs = LiuLib.configs();
 PlaytimeService playtime = LiuLib.playtime();
 MySql mysql = LiuLib.mysql();
 Sqlite sqlite = LiuLib.sqlite();
+File configRoot = LiuLib.configRoot();
 RedisClient redis = LiuLib.redis();
 SparrowUi sparrow = LiuLib.sparrow();
 ```
@@ -331,6 +332,22 @@ watcher.baseline();
 - 轮询线程只做文件 IO，`reloadAll` 在全局主线程执行，可安全操作 Bukkit 对象；
 - 自动重载失败只记录日志并保留旧配置，不会让插件处于半套配置状态；
 - 与 `config.yml` 的 `settings.shared-config-path` / `settings.auto-reload-config` 约定一致。
+
+### 6.1 LiuLib 自身配置共享
+
+多服部署时，可以让所有子服读取同一份 `config.yml`：
+
+```yaml
+# 每个子服的 plugins/LiuLib/config.yml 只需要这一行不同；其余配置全部从共享目录读取
+shared-config-path: '/mc/shared/liulib-config'
+```
+
+- 留空时自动检测 `/mc/shared/liulib-config`，目录存在才启用；
+- 显式路径不存在会自动创建，创建失败回退本地插件目录；
+- 共享目录缺少 `config.yml` 时自动复制 jar 内默认配置；
+- 启动/`/liulib reload` 时补全新增键，不覆盖已有值；
+- `shared-config-path` 只从**各服本地**的 `plugins/LiuLib/config.yml` 读取，共享文件里的同名键不会影响路径选择；
+- `LiuLib.configRoot()` 可查询当前实际使用的目录，`/liulib status` 也会显示“共享/本地”。
 
 ---
 

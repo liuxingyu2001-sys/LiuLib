@@ -20,12 +20,17 @@ import com.liuxingyu.liulib.text.TextService;
 import com.liuxingyu.liulib.ui.SparrowUi;
 import org.bukkit.Material;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.io.BukkitObjectOutputStream;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -53,6 +58,8 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     private volatile EconomyService economy;
     private volatile LiuLibScheduler scheduler;
     private volatile Configs configs;
+    private volatile File configRoot;
+    private volatile YamlConfiguration mainConfig;
     private volatile PlaytimeService playtime;
     private volatile MySql mysql;
     private volatile Sqlite sqlite;
@@ -63,10 +70,22 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        this.config = LiuLibConfig.load(getConfig());
-
         this.scheduler = new LiuLibScheduler(this);
         this.configs = new Configs(scheduler);
+        this.configRoot = resolveConfigRoot();
+        try {
+            this.mainConfig = loadMainConfig(configRoot);
+        } catch (Throwable error) {
+            getLogger().log(Level.SEVERE, "共享配置加载失败，回退本地配置", error);
+            this.configRoot = getDataFolder();
+            try {
+                this.mainConfig = loadMainConfig(configRoot);
+            } catch (Throwable localError) {
+                getLogger().log(Level.SEVERE, "本地配置也无法读取，使用内置默认配置", localError);
+                this.mainConfig = loadDefaultConfig();
+            }
+        }
+        this.config = LiuLibConfig.load(mainConfig);
         this.text = new TextService(config.text());
         this.items = new ItemService(this, config);
         this.itemOps = items.ops();
@@ -232,6 +251,12 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     }
 
     @Override
+    public File configRoot() {
+        File root = configRoot;
+        return root == null ? getDataFolder() : root;
+    }
+
+    @Override
     public String version() {
         return getPluginMeta().getVersion();
     }
@@ -240,6 +265,68 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     public boolean debug() {
         LiuLibConfig snapshot = config;
         return snapshot != null && snapshot.debug();
+    }
+
+    /** 默认共享配置目录；存在时才自动启用，显式配置优先。 */
+    private static final String AUTO_SHARED_CONFIG = "/mc/shared/liulib-config";
+
+    /**
+     * 解析配置根目录：本地 config.yml 的 {@code shared-config-path} →
+     * 自动检测 {@code /mc/shared/liulib-config} → 插件数据目录。
+     *
+     * <p>{@code shared-config-path} 只从各服本地那份 config.yml 读取，因此每个服只需配置一次路径；
+     * 共享目录里的其余配置（包括同一键）不会反过来影响路径选择。</p>
+     */
+    private File resolveConfigRoot() {
+        String configured = getConfig().getString("shared-config-path",
+                getConfig().getString("settings.shared-config-path", ""));
+        File root = configs.resolveRoot(this, configured, AUTO_SHARED_CONFIG);
+        try {
+            return root.getCanonicalFile();
+        } catch (Throwable ignored) {
+            return root.getAbsoluteFile();
+        }
+    }
+
+    /**
+     * 读取根目录下的 config.yml；缺失时先复制 jar 内默认配置，再补全新增键。
+     *
+     * @throws Exception 文件存在但 YAML 无法解析；调用方保留旧配置
+     */
+    private YamlConfiguration loadMainConfig(File root) throws Exception {
+        File file = new File(root, "config.yml");
+        if (!file.isFile()) {
+            configs.copyIfMissing(this, "config.yml", root);
+        }
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.options().parseComments(true);
+        if (file.isFile()) {
+            yaml.load(file);
+        }
+        YamlConfiguration defaults = loadDefaultConfig();
+        int added = configs.mergeMissingKeys(yaml, defaults);
+        if (added > 0) {
+            if (configs.saveAtomic(file, yaml)) {
+                getLogger().info("已为 " + file + " 补全 " + added + " 个缺失配置键");
+            } else {
+                getLogger().warning("配置缺失键补全后保存失败: " + file);
+            }
+        }
+        return yaml;
+    }
+
+    /** 从 jar 读取内置默认 config.yml；失败返回空配置。 */
+    private YamlConfiguration loadDefaultConfig() {
+        try (InputStream stream = getResource("config.yml")) {
+            if (stream == null) {
+                return new YamlConfiguration();
+            }
+            return YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(stream, StandardCharsets.UTF_8));
+        } catch (Throwable error) {
+            getLogger().log(Level.WARNING, "读取内置 config.yml 失败", error);
+            return new YamlConfiguration();
+        }
     }
 
     /**
@@ -251,8 +338,11 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     @Override
     public synchronized boolean reload() {
         try {
+            saveDefaultConfig();
             reloadConfig();
-            LiuLibConfig fresh = LiuLibConfig.load(getConfig());
+            File freshRoot = resolveConfigRoot();
+            YamlConfiguration freshMain = loadMainConfig(freshRoot);
+            LiuLibConfig fresh = LiuLibConfig.load(freshMain);
 
             // 先构造新模块，成功后再关闭旧模块；构造失败时旧服务保持可用。
             ItemService newItems = new ItemService(this, fresh);
@@ -285,6 +375,8 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
             boolean playtimeOk = newPlaytime.init();
 
             this.config = fresh;
+            this.configRoot = freshRoot;
+            this.mainConfig = freshMain;
             this.items = newItems;
             this.itemOps = newItemOps;
             this.configs = newConfigs;
@@ -463,6 +555,8 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
     public String status() {
         StringBuilder out = new StringBuilder();
         out.append("版本 ").append(version()).append('\n');
+        out.append("配置: ").append(configRoot().getAbsolutePath())
+                .append(configRoot().equals(getDataFolder()) ? "（本地）" : "（共享）").append('\n');
         out.append("CraftEngine: ").append(items.isCraftEngineAvailable()
                 ? items.craftEngine().diagnostics() : "未安装").append('\n');
         out.append("MySQL: ").append(mysql.isReady() ? "已连接" : "未启用/连接失败").append('\n');

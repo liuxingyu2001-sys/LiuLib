@@ -1,6 +1,11 @@
 # LiuLib 公共库配置
 # 本插件只提供 API，不包含玩法；下列连接默认关闭，按需启用。
 
+# 群组共享配置目录。留空时自动检测 /mc/shared/liulib-config（存在才用）。
+# 这个键只从各服本地 plugins/LiuLib/config.yml 读取；填了绝对路径后，
+# 所有配置从该目录的 config.yml 读取，首次会自动复制默认配置。
+shared-config-path: ''
+
 # 服务端消息/名称解析使用的语言（对应 lang/<locale>.json，缺文件时回退原版显示名）
 language: zh_CN
 

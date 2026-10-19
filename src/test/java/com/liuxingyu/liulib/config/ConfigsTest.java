@@ -1,12 +1,15 @@
 package com.liuxingyu.liulib.config;
 
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -46,6 +49,37 @@ class ConfigsTest {
 
         assertTrue(second.delete());
         assertEquals(1_000L, Configs.fingerprint(directory.toFile()));
+    }
+
+    @Test
+    void resolveRootCreatesExplicitAndFallsBack(@TempDir Path directory) throws Exception {
+        File data = directory.resolve("data").toFile();
+        assertTrue(data.mkdirs());
+        Plugin plugin = fakePlugin(data);
+
+        File explicit = directory.resolve("shared").toFile();
+        File resolved = configs.resolveRoot(plugin, explicit.getAbsolutePath(), "");
+        assertEquals(explicit.getCanonicalFile(), resolved.getCanonicalFile());
+        assertTrue(explicit.isDirectory());
+
+        File auto = directory.resolve("auto").toFile();
+        assertTrue(auto.mkdirs());
+        File detected = configs.resolveRoot(plugin, "", auto.getAbsolutePath());
+        assertEquals(auto.getCanonicalFile(), detected.getCanonicalFile());
+
+        File fallback = configs.resolveRoot(plugin, "", directory.resolve("missing").toString());
+        assertEquals(data.getCanonicalFile(), fallback.getCanonicalFile());
+    }
+
+    private static Plugin fakePlugin(File dataFolder) {
+        return (Plugin) Proxy.newProxyInstance(Plugin.class.getClassLoader(),
+                new Class<?>[]{Plugin.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getDataFolder" -> dataFolder;
+                    case "getLogger" -> Logger.getLogger("ConfigsTest");
+                    case "getName" -> "ConfigsTest";
+                    case "isEnabled" -> true;
+                    default -> null;
+                });
     }
 
     @Test
