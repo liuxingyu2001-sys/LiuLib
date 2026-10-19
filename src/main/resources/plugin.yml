@@ -1,0 +1,42 @@
+name: LiuLib
+version: '${project.version}'
+main: com.liuxingyu.liulib.LiuLibPlugin
+api-version: '1.21'
+authors: [liuxingyu, liuxingyu2001]
+description: liuxingyu 系列插件公共库 —— 物品解析 / 文本 / 调度 / 冷却 / 在线时长 / 经济 / 跨服 / MySQL / Redis / Sparrow UI
+website: 'https://github.com/liuxingyu2001'
+folia-supported: true
+
+# CraftEngine 可选：未安装时物品解析自动回退原版材质，不报错
+softdepend:
+  - CraftEngine
+  - PlaceholderAPI
+  - Vault
+
+# JDBC 驱动交给 Paper 下载并挂到 LiuLib 类加载器；Hikari / Jedis / Sparrow UI
+# 已随 LiuLib 打包并 relocate，服主不需要额外安装。
+libraries:
+  - com.mysql:mysql-connector-j:8.0.33
+
+commands:
+  liulib:
+    description: LiuLib 状态、重载与在线时长
+    usage: /liulib <status|selftest|reload|playtime>
+    aliases: [ll]
+
+permissions:
+  liulib.admin:
+    description: LiuLib 管理命令
+    default: op
+  liulib.playtime:
+    description: 查看自己的在线时长
+    default: true
+  liulib.playtime.others:
+    description: 查看其他玩家的在线时长
+    default: op
+  liulib.playtime.top:
+    description: 查看在线时长排行榜
+    default: true
+  liulib.playtime.afk-bypass:
+    description: 挂机也计入在线时长
+    default: false

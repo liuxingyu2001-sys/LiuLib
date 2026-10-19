@@ -1,0 +1,97 @@
+# LiuLib 公共库配置
+# 本插件只提供 API，不包含玩法；下列连接默认关闭，按需启用。
+
+# 服务端消息/名称解析使用的语言（对应 lang/<locale>.json，缺文件时回退原版显示名）
+language: zh_CN
+
+# ---------------------------------------------------------------------------
+# 文本模块：MiniMessage + 传统 & / § 色码 + {占位符}
+# 依赖方可用 LiuLib.text().parse(...) / messages(plugin).send(...)
+# ---------------------------------------------------------------------------
+text:
+  # 全局消息前缀，支持 MiniMessage 与 & 色码
+  prefix: ''
+  # 消息文件缺少 key 时输出什么；{key} 会被替换成缺失的键名
+  missing-key: '<red>缺失消息: {key}'
+  # 是否在控制台警告缺失的 key（同一个 key 只警告一次）
+  warn-missing: true
+  # 是否把 & / § 色码转成 MiniMessage（关闭后只解析 MiniMessage）
+  legacy-input: true
+
+# ---------------------------------------------------------------------------
+# 玩家在线时长统计
+# 依赖方可用 LiuLib.playtime() 读取/发奖；MySQL 就绪时多服自动聚合
+# ---------------------------------------------------------------------------
+playtime:
+  enabled: true
+  # 计时粒度（秒）；越小越精确，开销也越高
+  tick-seconds: 1
+  # 超过该秒数没有移动/聊天/命令/交互视为 AFK，停止计时；0 = 不检测 AFK
+  afk-timeout-seconds: 0
+  # 拥有该权限的玩家挂机也计时（留空则关闭豁免）
+  afk-bypass-permission: 'liulib.playtime.afk-bypass'
+  # 会话短于该秒数不写库，避免刷进服
+  min-session-seconds: 60
+  # 定时把增量写入存储（秒）
+  flush-interval-seconds: 300
+  # 插件停用时等待异步写入完成的超时（毫秒）
+  quit-flush-timeout-ms: 3000
+  # 每日/每周边界使用的时区
+  timezone: 'Asia/Shanghai'
+  # 不统计的世界（区分大小写不敏感）
+  ignored-worlds: []
+  # auto = MySQL 就绪则 MySQL，否则 YAML；mysql / yaml 可强制指定
+  storage: auto
+  # 排行榜缓存秒数（0 = 不缓存）
+  top-cache-seconds: 60
+  # YAML 模式保留最近多少天的按天明细
+  yaml-retention-days: 60
+  # 是否注册 PlaceholderAPI 变量 %liulib_playtime_*%
+  placeholders: true
+
+# 调试日志：物品解析失败、CE 翻译缺失等会打印更多信息
+debug: false
+
+item:
+  # 单个物品 Base64 编码的最大长度，超过按脏数据拒绝，避免恶意 NBT 撑爆数据库
+  max-encoded-length: 60000
+  # 名称解析失败时的最终兜底文本
+  unknown-name: '未命名物品'
+  craft-engine:
+    # CE ID 不带命名空间时补全的默认命名空间
+    default-namespace: craftengine
+    # 扫描 CraftEngine 的 resources/ 与 translations/ 语言文件，补齐服务端拿不到的物品翻译
+    scan-language-files: true
+
+mysql:
+  enabled: false
+  host: 127.0.0.1
+  port: 3306
+  database: liulib
+  username: root
+  password: ''
+  # 表名前缀，便于多个插件共库
+  table-prefix: 'liulib_'
+  pool-size: 6
+  connection-timeout-ms: 5000
+  use-ssl: false
+  # 启动时执行 CREATE DATABASE IF NOT EXISTS（账号无权限时只警告）
+  auto-create-database: true
+
+redis:
+  enabled: false
+  host: 127.0.0.1
+  port: 6379
+  password: ''
+  database: 0
+  timeout-ms: 2000
+  pool-size: 8
+  # 所有 key 的默认前缀，避免同一台 Redis 上多个网络/插件串服
+  key-prefix: 'liulib:'
+
+ui:
+  sparrow:
+    # 随 LiuLib 打包的 Sparrow UI；关闭或初始化失败时调用方应回退原版界面
+    enabled: true
+    # 是否把 Sparrow 内部异常转成 LiuLib 警告日志
+    catch-exceptions: true
