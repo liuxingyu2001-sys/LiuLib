@@ -13,6 +13,7 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigsTest {
@@ -37,7 +38,7 @@ class ConfigsTest {
     }
 
     @Test
-    void fingerprintUsesNewestYamlOnly(@TempDir Path directory) throws Exception {
+    void fingerprintTracksPathsSizesAndMtimes(@TempDir Path directory) throws Exception {
         File first = Files.createFile(directory.resolve("a.yml")).toFile();
         File second = Files.createFile(directory.resolve("nested.yml")).toFile();
         File ignored = Files.createFile(directory.resolve("notes.txt")).toFile();
@@ -45,10 +46,19 @@ class ConfigsTest {
         assertTrue(second.setLastModified(2_000L));
         assertTrue(ignored.setLastModified(9_000L));
 
-        assertEquals(2_000L, Configs.fingerprint(directory.toFile()));
+        long initial = Configs.fingerprint(directory.toFile());
+        // 同一批文件重复计算必须稳定；非 YAML 文件不参与。
+        assertEquals(initial, Configs.fingerprint(directory.toFile()));
+        assertTrue(ignored.setLastModified(10_000L));
+        assertEquals(initial, Configs.fingerprint(directory.toFile()));
+
+        // 旧文件被原地修改（mtime 不再是最新）也必须触发变化，不能只看最大 mtime。
+        assertTrue(first.setLastModified(1_500L));
+        long firstTouched = Configs.fingerprint(directory.toFile());
+        assertNotEquals(initial, firstTouched);
 
         assertTrue(second.delete());
-        assertEquals(1_000L, Configs.fingerprint(directory.toFile()));
+        assertNotEquals(firstTouched, Configs.fingerprint(directory.toFile()));
     }
 
     @Test

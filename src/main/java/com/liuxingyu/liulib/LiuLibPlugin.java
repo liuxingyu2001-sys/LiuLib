@@ -361,6 +361,27 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
             PlaytimeService newPlaytime = new PlaytimeService(this, fresh.playtime(), scheduler, newMysql, placeholders);
             EconomyService newEconomy = new EconomyService(this);
 
+            // 必需模块初始化失败时不能换掉旧模块：否则一次手滑的配置会把正在运行的
+            // MySQL/Redis 连接关掉，所有依赖插件立即失去存储。先验证，再关闭旧实例。
+            boolean requiredOk = true;
+            if (fresh.mysql().enabled() && !mysqlOk) {
+                requiredOk = false;
+            }
+            if (fresh.sqlite().enabled() && !sqliteOk) {
+                requiredOk = false;
+            }
+            if (fresh.redis().enabled() && !redisOk) {
+                requiredOk = false;
+            }
+            if (fresh.ui().sparrowEnabled() && !sparrowOk) {
+                requiredOk = false;
+            }
+            if (!requiredOk) {
+                getLogger().severe("新配置的必需存储/连接初始化失败，本次重载已取消，继续使用旧模块");
+                closeQuietly(newCrossServer, newSparrow, newRedis, newSqlite, newMysql);
+                return false;
+            }
+
             MySql oldMysql = mysql;
             Sqlite oldSqlite = sqlite;
             RedisClient oldRedis = redis;
@@ -370,9 +391,19 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
 
             // 先停旧实例：释放 PAPI 变量与监听器，旧实例会同步刷新数据到旧 MySQL。
             if (oldPlaytime != null) {
-                oldPlaytime.shutdown();
+                try {
+                    oldPlaytime.shutdown();
+                } catch (Throwable error) {
+                    getLogger().log(Level.WARNING, "关闭旧在线时长模块失败", error);
+                }
             }
-            boolean playtimeOk = newPlaytime.init();
+            boolean playtimeOk;
+            try {
+                playtimeOk = newPlaytime.init();
+            } catch (Throwable error) {
+                getLogger().log(Level.SEVERE, "初始化新在线时长模块失败", error);
+                playtimeOk = false;
+            }
 
             this.config = fresh;
             this.configRoot = freshRoot;
@@ -389,42 +420,52 @@ public final class LiuLibPlugin extends JavaPlugin implements LiuLibApi {
             this.playtime = newPlaytime;
             this.economy = newEconomy;
 
-            if (oldCrossServer != null) {
-                oldCrossServer.close();
-            }
-            if (oldSparrow != null) {
-                oldSparrow.shutdown();
-            }
-            if (oldRedis != null) {
-                oldRedis.close();
-            }
-            if (oldSqlite != null) {
-                oldSqlite.close();
-            }
-            if (oldMysql != null) {
-                oldMysql.close();
-            }
+            closeQuietly(oldCrossServer, oldSparrow, oldRedis, oldSqlite, oldMysql);
 
             boolean ok = true;
-            if (fresh.mysql().enabled() && !mysqlOk) {
-                ok = false;
-            }
-            if (fresh.sqlite().enabled() && !sqliteOk) {
-                ok = false;
-            }
-            if (fresh.redis().enabled() && !redisOk) {
-                ok = false;
-            }
-            if (fresh.ui().sparrowEnabled() && !sparrowOk) {
-                ok = false;
-            }
             if (fresh.playtime().enabled() && !playtimeOk) {
+                getLogger().warning("在线时长模块未能按新配置启用，本次重载后该模块保持关闭");
                 ok = false;
             }
             return ok;
         } catch (Throwable error) {
             getLogger().log(Level.SEVERE, "LiuLib 重载失败，保留旧配置", error);
             return false;
+        }
+    }
+
+    /** 关闭一组新构造但未启用的模块，避免重载失败时泄漏连接池/线程。 */
+    private void closeQuietly(CrossServer crossServer, SparrowUi sparrow, RedisClient redis,
+                              Sqlite sqlite, MySql mysql) {
+        try {
+            if (crossServer != null) {
+                crossServer.close();
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (sparrow != null) {
+                sparrow.shutdown();
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (redis != null) {
+                redis.close();
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (sqlite != null) {
+                sqlite.close();
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (mysql != null) {
+                mysql.close();
+            }
+        } catch (Throwable ignored) {
         }
     }
 

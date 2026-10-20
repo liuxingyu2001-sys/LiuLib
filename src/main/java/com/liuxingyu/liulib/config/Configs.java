@@ -13,13 +13,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.stream.Stream;
 
 /**
- * 配置模块：共享配置目录、默认配置复制、缺失键补全与 mtime 热重载。
+ * 配置模块：共享配置目录、默认配置复制、缺失键补全与 文件变化热重载。
  *
  * <p>对应 {@code shared-config-guide.md} 里被 luckfurnace / liupass / mcskills
  * 复制了三遍的五个步骤：</p>
@@ -27,7 +28,7 @@ import java.util.stream.Stream;
  *   <li>{@link #resolveRoot(Plugin, String, String)}：显式路径 → 自动检测 → 插件目录；</li>
  *   <li>{@link #copyIfMissing(Plugin, String, File)}：首次运行把 jar 内默认配置复制到共享目录；</li>
  *   <li>{@link #mergeMissingKeys(ConfigurationSection, ConfigurationSection)}：升级补键，不覆盖用户值；</li>
- *   <li>{@link #fingerprint(File)}：目录内 yml 的 mtime 指纹；</li>
+ *   <li>{@link #fingerprint(File)}：目录内 yml 的路径/大小/mtime 指纹；</li>
  *   <li>{@link #watch(Plugin, File, long, Runnable)}：异步轮询 → 主线程重载。</li>
  * </ol>
  *
@@ -183,24 +184,33 @@ public final class Configs {
     // ==================================================================
 
     /**
-     * 目录内所有 {@code .yml/.yaml} 的最大修改时间；目录不存在返回 0。
+     * 目录内所有 {@code .yml/.yaml} 的内容指纹；目录不存在返回 0。
      *
-     * <p>新增文件会带来更新的 mtime，删除文件会让最大值回退，两种情况都能被检测到。
+     * <p>把相对路径、文件大小和 mtime 一起混合，而不是只取最大 mtime：
+     * 新增一个“旧时间戳”的文件、删除非最新文件、同秒内改名等场景也能被检测到。
      * 符号链接不会被跟随。</p>
      */
     public static long fingerprint(File directory) {
         if (directory == null || !directory.isDirectory()) {
             return 0L;
         }
-        final AtomicLong latest = new AtomicLong(0L);
         try (Stream<Path> stream = Files.walk(directory.toPath())) {
-            stream.filter(Files::isRegularFile)
+            List<Path> files = stream.filter(Files::isRegularFile)
                     .filter(path -> isYaml(path.getFileName().toString()))
-                    .forEach(path -> latest.accumulateAndGet(path.toFile().lastModified(), Math::max));
+                    .sorted()
+                    .toList();
+            long hash = 1125899906842597L;
+            for (Path path : files) {
+                File file = path.toFile();
+                String relative = directory.toPath().relativize(path).toString();
+                hash = 31 * hash + relative.hashCode();
+                hash = 31 * hash + file.length();
+                hash = 31 * hash + file.lastModified();
+            }
+            return hash == 0L ? 1L : hash;
         } catch (Throwable error) {
             return 0L;
         }
-        return latest.get();
     }
 
     private static boolean isYaml(String name) {
@@ -250,26 +260,36 @@ public final class Configs {
                 return;
             }
             long stamp = fingerprint(directory);
-            long previous = lastFingerprint.getAndSet(stamp);
+            long previous = lastFingerprint.get();
             if (stamp == previous) {
                 return;
             }
             if (!reloading.compareAndSet(false, true)) {
+                // 重载进行中：不要提前吞掉这次指纹，否则重载读取完成后这次变化
+                // 会永远丢失；让下一轮重新检测。
                 return;
             }
+            lastFingerprint.set(stamp);
             boolean scheduled = scheduler.global(() -> {
+                if (closed.get()) {
+                    return;
+                }
                 try {
+                    // 先记录基线再读取配置：如果文件在 reload 读取期间再次变化，
+                    // 下一轮仍能检测到，而不会被 finally 里的 baseline 吞掉。
+                    baseline();
                     plugin.getLogger().info("检测到配置变化，开始重载: " + directory);
                     reload.run();
                     plugin.getLogger().info("配置重载完成");
                 } catch (Throwable error) {
                     plugin.getLogger().log(Level.SEVERE, "配置自动重载失败，保留旧配置", error);
                 } finally {
-                    baseline();
                     reloading.set(false);
                 }
             });
             if (!scheduled) {
+                // 调度失败时把指纹退回，下一轮还能再次检测到这次变化。
+                lastFingerprint.compareAndSet(stamp, previous);
                 reloading.set(false);
             }
         }
@@ -291,6 +311,7 @@ public final class Configs {
         public void stop() {
             if (closed.compareAndSet(false, true)) {
                 task.cancel();
+                baseline();
             }
         }
 

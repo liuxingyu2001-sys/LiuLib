@@ -50,6 +50,7 @@ public final class MySql implements AutoCloseable {
     private final Logger logger;
     private final SqlConfig config;
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicBoolean closing = new AtomicBoolean();
     private volatile HikariDataSource dataSource;
     private volatile ThreadPoolExecutor executor;
 
@@ -173,7 +174,9 @@ public final class MySql implements AutoCloseable {
 
     @Override
     public synchronized void close() {
-        if (!closed.compareAndSet(false, true)) {
+        // 先停止接收新任务，再排空已入队写入；closed 必须最后置位，
+        // 否则队列里的任务会在 withConnection() 里看到“未就绪”而全部失败。
+        if (closed.get() || !closing.compareAndSet(false, true)) {
             return;
         }
         ThreadPoolExecutor worker = executor;
@@ -189,6 +192,7 @@ public final class MySql implements AutoCloseable {
                 Thread.currentThread().interrupt();
             }
         }
+        closed.set(true);
         closePool();
     }
 
@@ -324,7 +328,7 @@ public final class MySql implements AutoCloseable {
     public CompletableFuture<Void> executeAsync(Runnable task) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         ThreadPoolExecutor worker = executor;
-        if (worker == null || closed.get()) {
+        if (worker == null || closed.get() || closing.get()) {
             future.completeExceptionally(new LiuSqlException("MySQL 未就绪"));
             return future;
         }
@@ -349,7 +353,7 @@ public final class MySql implements AutoCloseable {
     public <T> CompletableFuture<T> supplyAsync(JavaSqlSupplier<T> supplier) {
         CompletableFuture<T> future = new CompletableFuture<>();
         ThreadPoolExecutor worker = executor;
-        if (worker == null || closed.get()) {
+        if (worker == null || closed.get() || closing.get()) {
             future.completeExceptionally(new LiuSqlException("MySQL 未就绪"));
             return future;
         }

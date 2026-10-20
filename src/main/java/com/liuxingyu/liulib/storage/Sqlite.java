@@ -49,6 +49,7 @@ public final class Sqlite implements AutoCloseable {
     private final Path file;
     private final Logger logger;
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicBoolean closing = new AtomicBoolean();
 
     private volatile Driver driver;
     private volatile boolean ready;
@@ -147,6 +148,20 @@ public final class Sqlite implements AutoCloseable {
         return file;
     }
 
+    /**
+     * 打开一条新的 SQLite 连接；调用方负责关闭。
+     *
+     * <p>面向已有 JDBC 代码迁移：保留调用方的 try-with-resources 结构，同时统一
+     * busy_timeout / foreign_keys 等连接参数。新代码优先使用
+     * {@link #query}/{@link #update}/{@link #transaction} 模板。</p>
+     */
+    public Connection getConnection() throws SQLException {
+        if (!isReady()) {
+            throw new SQLException("SQLite 未就绪: " + file);
+        }
+        return open();
+    }
+
     public SqliteConfig config() {
         return config;
     }
@@ -158,11 +173,14 @@ public final class Sqlite implements AutoCloseable {
 
     @Override
     public synchronized void close() {
-        if (!closed.compareAndSet(false, true)) {
+        // 与 MySql 一致：先停止接收新任务，排空队列期间 isReady 仍为 true，
+        // 否则排队中的写入会在 withConnection() 里直接失败。
+        if (closed.get() || !closing.compareAndSet(false, true)) {
             return;
         }
-        ready = false;
         closeExecutor();
+        ready = false;
+        closed.set(true);
         driver = null;
     }
 
@@ -292,7 +310,7 @@ public final class Sqlite implements AutoCloseable {
     public CompletableFuture<Void> executeAsync(Runnable task) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         ThreadPoolExecutor worker = executor;
-        if (worker == null || closed.get() || task == null) {
+        if (worker == null || closed.get() || closing.get() || task == null) {
             future.completeExceptionally(new LiuSqlException("SQLite 未就绪"));
             return future;
         }
