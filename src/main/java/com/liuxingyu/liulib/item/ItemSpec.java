@@ -18,7 +18,9 @@ public record ItemSpec(Source source, String id, int amount, String raw) {
         /** CraftEngine 物品，id 为 namespace:id。 */
         CRAFT_ENGINE,
         /** Paper Base64 / 旧对象流编码的完整物品。 */
-        ENCODED
+        ENCODED,
+        /** 自定义前缀（由扩展插件注册的 {@link ItemResolver} 构建，如 liuitemlib 的 {@code lib:}）。 */
+        CUSTOM
     }
 
     public ItemSpec {
@@ -37,18 +39,22 @@ public record ItemSpec(Source source, String id, int amount, String raw) {
         return source == Source.ENCODED;
     }
 
+    public boolean isCustom() {
+        return source == Source.CUSTOM;
+    }
+
     /** 规范化 ID：{@code minecraft:DIAMOND} / {@code ce:namespace:id}；编码物品返回 null。 */
     public String canonicalId() {
         return switch (source) {
             case VANILLA -> "minecraft:" + id;
             case CRAFT_ENGINE -> "ce:" + id;
-            case ENCODED -> null;
+            case ENCODED, CUSTOM -> null;
         };
     }
 
     /** 数量后缀形式，便于写回配置。 */
     public String configString() {
-        if (source == Source.ENCODED) {
+        if (source == Source.ENCODED || source == Source.CUSTOM) {
             return raw;
         }
         String base = source == Source.CRAFT_ENGINE ? "ce:" + id : id;

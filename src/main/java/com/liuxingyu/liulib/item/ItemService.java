@@ -7,6 +7,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -31,6 +33,7 @@ public final class ItemService {
     private final ItemNames names;
     private final ItemSpecParser parser;
     private final ItemOps ops;
+    private final Map<String, ItemResolver> resolvers = new ConcurrentHashMap<>();
 
     public ItemService(JavaPlugin plugin, LiuLibConfig config) {
         this.plugin = plugin;
@@ -48,7 +51,7 @@ public final class ItemService {
         this.names = new ItemNames(logger, craftEngine, minecraftLang, config.language(),
                 config.item().unknownName());
         this.parser = new ItemSpecParser(logger, codec, craftEngine, names,
-                config.item().craftEngineNamespace());
+                config.item().craftEngineNamespace(), resolvers);
         this.ops = new ItemOps(this);
     }
 
@@ -76,6 +79,29 @@ public final class ItemService {
 
     public ItemSpecParser parser() {
         return parser;
+    }
+
+    /**
+     * 注册自定义物品前缀（扩展点）。前缀大小写不敏感，例如 {@code "lib"}。
+     * 注册后所有 {@code build/buildOrNull} 调用都能解析 {@code lib:xxx}；覆盖注册会替换旧解析器。
+     */
+    public void registerResolver(String prefix, ItemResolver resolver) {
+        if (prefix == null || prefix.isBlank() || resolver == null) {
+            return;
+        }
+        resolvers.put(prefix.trim().toLowerCase(java.util.Locale.ROOT), resolver);
+    }
+
+    /** 注销自定义前缀（插件停用时调用）。 */
+    public void unregisterResolver(String prefix) {
+        if (prefix != null) {
+            resolvers.remove(prefix.trim().toLowerCase(java.util.Locale.ROOT));
+        }
+    }
+
+    /** 已注册的自定义前缀。 */
+    public java.util.Set<String> resolverPrefixes() {
+        return java.util.Set.copyOf(resolvers.keySet());
     }
 
     /** 物品库存操作（统计/检查/扣除/给予）。 */

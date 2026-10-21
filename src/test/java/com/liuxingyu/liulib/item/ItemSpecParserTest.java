@@ -11,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ItemSpecParserTest {
 
     private final ItemSpecParser parser = new ItemSpecParser(
-            java.util.logging.Logger.getLogger("test"), new ItemCodec(), null, null, "craftengine");
+            java.util.logging.Logger.getLogger("test"), new ItemCodec(), null, null, "craftengine",
+            new java.util.concurrent.ConcurrentHashMap<>());
 
     @Test
     void parsesCraftEngineIds() {
@@ -72,5 +73,22 @@ class ItemSpecParserTest {
         }
         assertFalse(parser.parse("ce:myitems:sword").isVanilla());
         assertTrue(parser.parse("ce:myitems:sword").isCraftEngine());
+    }
+
+    @Test
+    void parsesCustomResolverPrefix() {
+        java.util.Map<String, ItemResolver> resolvers = new java.util.concurrent.ConcurrentHashMap<>();
+        resolvers.put("lib", body -> null); // 无服务端运行时，只验证解析与分发
+        ItemSpecParser custom = new ItemSpecParser(
+                java.util.logging.Logger.getLogger("test"), new ItemCodec(), null, null, "craftengine",
+                resolvers);
+        ItemSpec spec = custom.parse("lib:gift:spring*3");
+        assertEquals(ItemSpec.Source.CUSTOM, spec.source());
+        assertEquals("lib:gift:spring", spec.id());
+        assertEquals(3, spec.amount());
+        assertTrue(spec.isCustom());
+        assertNull(spec.canonicalId());
+        assertEquals("lib:gift:spring*3", spec.configString());
+        assertNull(custom.build(spec));
     }
 }

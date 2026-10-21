@@ -6,6 +6,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -41,15 +42,17 @@ public final class ItemSpecParser {
     private final CraftEngineItems craftEngine;
     private final ItemNames names;
     private final String defaultNamespace;
+    private final Map<String, ItemResolver> resolvers;
 
     public ItemSpecParser(Logger logger, ItemCodec codec, CraftEngineItems craftEngine,
-                          ItemNames names, String defaultNamespace) {
+                          ItemNames names, String defaultNamespace, Map<String, ItemResolver> resolvers) {
         this.logger = logger;
         this.codec = codec;
         this.craftEngine = craftEngine;
         this.names = names;
         this.defaultNamespace = defaultNamespace == null || defaultNamespace.isBlank()
                 ? "craftengine" : defaultNamespace;
+        this.resolvers = resolvers;
     }
 
     // ==================================================================
@@ -62,6 +65,22 @@ public final class ItemSpecParser {
             throw new IllegalArgumentException("物品配置为空");
         }
         String text = raw.trim();
+
+        // 扩展前缀（如 liuitemlib 的 lib:gift:spring）：交给注册的解析器，支持 *数量 后缀
+        int customColon = text.indexOf(':');
+        if (customColon > 0 && resolvers != null) {
+            String prefix = text.substring(0, customColon).toLowerCase(Locale.ROOT);
+            if (resolvers.containsKey(prefix)) {
+                String body = text.substring(customColon + 1).trim();
+                int customAmount = 1;
+                Matcher customStar = STAR_AMOUNT.matcher(body);
+                if (customStar.matches()) {
+                    body = customStar.group(1).trim();
+                    customAmount = positive(customStar.group(2), raw);
+                }
+                return new ItemSpec(ItemSpec.Source.CUSTOM, prefix + ":" + body, customAmount, text);
+            }
+        }
 
         // 完整物品编码：原样保存，数量由物品自身决定
         for (String prefix : new String[]{"base64:", "nbt:", "bytes:", "item:"}) {
@@ -213,6 +232,21 @@ public final class ItemSpecParser {
             }
             case CRAFT_ENGINE -> craftEngine == null ? null
                     : craftEngine.build(spec.id(), spec.amount());
+            case CUSTOM -> {
+                int colon = spec.id().indexOf(':');
+                String prefix = colon < 0 ? "" : spec.id().substring(0, colon).toLowerCase(Locale.ROOT);
+                String body = colon < 0 ? spec.id() : spec.id().substring(colon + 1);
+                ItemResolver resolver = resolvers == null ? null : resolvers.get(prefix);
+                ItemStack resolved = resolver == null ? null : resolver.resolve(body);
+                if (resolved == null) {
+                    yield null;
+                }
+                ItemStack copy = resolved.clone();
+                if (spec.amount() > 1) {
+                    copy.setAmount(Math.min(spec.amount(), Math.max(1, copy.getMaxStackSize())));
+                }
+                yield copy;
+            }
         };
     }
 

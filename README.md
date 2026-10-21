@@ -765,3 +765,23 @@ SQLite / MySQL 驱动仍由 `plugin.yml` 的 `libraries` 交给 Paper 下载。
 - `/liulib reload` 会重建模块；Redis 订阅、Sparrow 窗口、在线时长的监听器都会重建，
   依赖插件应同步重载。
 - 不要把 MySQL 密码、Redis 密码写进日志或提交到仓库。
+
+
+## 扩展：自定义物品前缀（1.0.5+）
+
+其它插件可以把自己的物品来源注册成 LiuLib 前缀，注册后**所有走 LiuLib 解析的插件**都能直接写该前缀：
+
+```java
+// onEnable
+LiuLib.items().registerResolver("lib", body -> LiuItemLibraryApi.build(body));
+// onDisable
+LiuLib.items().unregisterResolver("lib");
+```
+
+```yaml
+item: "lib:gift:spring_2026"   # 解析为 gift:spring_2026，交给注册的解析器构建
+item: "lib:gift:spring_2026*3" # 支持 *数量
+```
+
+解析规则：`parse()` 先看已注册前缀（大小写不敏感），命中则生成 `ItemSpec.Source.CUSTOM`；
+`build()` 调解析器返回的物品（`null` = 构建失败），`configString()` 保留原串、`canonicalId()` 为 null。
